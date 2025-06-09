@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eskom Solar Shooter</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="chat.css">
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -21,15 +22,15 @@
         <div id="ammo">Pistol: 12/12</div>
         <div id="damage-counter">Damage: 0</div>
         <div id="damage-indicator"></div>
-        <!-- Health bar removed - now using the one in the bottom middle -->
         <div id="double-jump-container">
             <div id="double-jump-icon">🚀</div>
             <div id="double-jump-cooldown"></div>
+            <div id="double-jump-ui" class="double-jump-ui">Double Jump</div>
+            <div id="double-jump-effect" class="double-jump-effect"></div>
         </div>
         <div id="minimap-container">
             <canvas id="minimap"></canvas>
         </div>
-        <!-- Crosshair elements removed to make room for health/armor bars -->
         
         <!-- Crosshair elements for aiming and normal view -->
         <div id="normal-crosshair" class="crosshair">
@@ -83,6 +84,7 @@
                 </div>
             </div>
         </div>
+        
         <!-- Pickup notification container -->
         <div id="pickup-notification" style="display: none;">
             <div id="pickup-icon"></div>
@@ -140,9 +142,11 @@
             </div>
         </div>
     </div>
-    <script type="module" src="game.js"></script>
-    <script src="minimap.js"></script>
-    <script src="chat-system.js"></script>
-    <script type="module" src="double-jump-handler.js"></script>
+    <!-- Core game scripts (load in order) -->
+    <script src="minimap.js" defer></script>
+    <script src="chat.js" defer></script>
+    <script src="stats-screen.js" defer></script>
+    <script type="module" src="double-jump-handler.js" defer></script>
+    <script type="module" src="game.js" defer></script>
 </body>
 </html>

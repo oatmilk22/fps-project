@@ -122,26 +122,10 @@ let isDead = false;
 // Use startTime consistently throughout the code
 let startTime = Date.now();
 
-// Function to handle player death
+// Player death function - DISABLED
 function playerDeath() {
-    // Set the death flag
-    isDead = true;
-    
-    // Update death screen with current stats
-    document.getElementById('death-score').textContent = `Score: ${score}`;
-    
-    // Calculate time survived
-    const timeSurvived = Math.floor((Date.now() - startTime) / 1000);
-    const minutes = Math.floor(timeSurvived / 60);
-    const seconds = timeSurvived % 60;
-    document.getElementById('death-time').textContent = `Time Survived: ${minutes}m ${seconds}s`;
-    
-    // Show death screen
-    document.getElementById('death-fade').style.opacity = '0.7';
-    document.getElementById('death-screen').style.display = 'block';
-    
-    // Unlock pointer
-    controls.unlock();
+    console.log('Player death prevented!');
+    return; // Completely disable death
 }
 
 // Function to handle game reset - declaration moved to avoid duplication
@@ -1030,50 +1014,65 @@ document.addEventListener('mouseup', (event) => {
     }
 });
 
+// Keyboard event handling for game controls
+document.addEventListener('keydown', (event) => {
+    // Prevent default behavior for Tab key to avoid focusing browser elements
+    if (event.key === 'Tab') {
+        event.preventDefault();
+    }
+});
+
+// Handle keyup events for game controls
+document.addEventListener('keyup', (event) => {
+    // Tab key is handled by the stats-screen.js
+    if (event.key === 'Tab') {
+        event.preventDefault();
+    }
+});
+
 // Function to fire the current weapon
 function fireWeapon() {
-    // Calculate shot direction with spread
-    const shotDirection = new THREE.Vector3();
-    camera.getWorldDirection(shotDirection);
-    
-
-    // Apply weapon-specific spread based on stance
-    let spreadAmount;
-    if (isAiming) {
-        spreadAmount = currentWeapon.spread.aim;
-    } else if (isSprinting) {
-        spreadAmount = currentWeapon.spread.sprint;
-    } else {
-        spreadAmount = currentWeapon.spread.normal;
-    }
-    
-    // Apply additional spread based on movement and stance
-    let finalSpread = spreadAmount;
-    const isMoving = moveForward || moveBackward || moveLeft || moveRight;
-    
-    // Additional modifiers
-    if (isCrawling) {
-        finalSpread *= 0.7; // Crawling: more accurate
-    } else if (isMoving && !isAiming && !isSprinting) {
-        finalSpread *= 1.2; // Moving without aiming: less accurate
-    }
-    
-    // Handle different weapon types
-    if (currentWeapon === WEAPONS.SHOTGUN) {
-        // Shotgun fires multiple pellets
-        for (let i = 0; i < currentWeapon.pellets; i++) {
-            fireSingleShot(finalSpread * 1.2); // Shotgun has wider spread per pellet
+    // Use requestAnimationFrame to prevent UI blocking
+    requestAnimationFrame(() => {
+        // Calculate shot direction with spread
+        const shotDirection = new THREE.Vector3();
+        camera.getWorldDirection(shotDirection);
+        
+        // Apply weapon-specific spread based on stance
+        let spreadAmount;
+        if (isAiming) {
+            spreadAmount = currentWeapon.spread.aim;
+        } else if (isSprinting) {
+            spreadAmount = currentWeapon.spread.sprint;
+        } else {
+            spreadAmount = currentWeapon.spread.normal;
         }
-    } else {
-        // Single projectile weapons
-        fireSingleShot(finalSpread);
-    }
-    
-    // Play sound effect (to be implemented)
-    // playSound(currentWeapon.name);
-    
-    // Muzzle flash effect
-    createMuzzleFlash();
+        
+        // Apply additional spread based on movement and stance
+        let finalSpread = spreadAmount;
+        const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+        
+        // Additional modifiers
+        if (isCrawling) {
+            finalSpread *= 0.7; // Crawling: more accurate
+        } else if (isMoving && !isAiming && !isSprinting) {
+            finalSpread *= 1.2; // Moving without aiming: less accurate
+        }
+        
+        // Handle different weapon types
+        if (currentWeapon === WEAPONS.SHOTGUN) {
+            // Fire all shotgun pellets simultaneously
+            for (let i = 0; i < currentWeapon.pellets; i++) {
+                fireSingleShot(finalSpread * 1.2);
+            }
+        } else {
+            // Single projectile weapons
+            fireSingleShot(finalSpread);
+        }
+        
+        // Muzzle flash effect
+        createMuzzleFlash();
+    });
 }
 
 // Function to fire a single shot/pellet
@@ -1098,6 +1097,11 @@ function fireSingleShot(spread) {
         const yAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion); // Pitch axis
         shotDirection.applyAxisAngle(xAxis, randomSpreadX);
         shotDirection.applyAxisAngle(yAxis, randomSpreadY);
+    }
+    
+    // Track shot in stats system if available
+    if (window.statsSystem) {
+        window.statsSystem.recordShot(false, 0); // We'll update this if we hit something
     }
     
     // Calculate max distance based on weapon
@@ -1158,6 +1162,11 @@ function fireSingleShot(spread) {
         // Show damage number at hit location
         showDamageNumber(damage, hit.point, isHeadshot);
         
+        // Record hit and damage in stats system if available
+        if (window.statsSystem) {
+            window.statsSystem.recordShot(true, damage);
+        }
+        
         // Check if target is destroyed
         if (target.userData.health <= 0) {
             // Store position before removing for item drop
@@ -1168,24 +1177,29 @@ function fireSingleShot(spread) {
             const index = robotEnemies.indexOf(target);
             if (index !== -1) {
                 robotEnemies.splice(index, 1);
-                
-                // Add points to score
-                score += isHeadshot ? 20 : 10;
-                // Update score display
-                document.getElementById('score').textContent = `Score: ${score}`;
-                
-                // Increase player armor by 20 when killing a robot
-                playerArmor = Math.min(maxPlayerArmor, playerArmor + 20);
-                updateHealthBar();
-                
-                // Chance to drop an item (ammo or armor)
-                if (Math.random() < target.userData.dropChance) {
-                    createDroppedItem(robotPosition);
-                }
-                
-                // Create a new robot enemy
-                createRobotEnemy();
             }
+            
+            // Add points to score
+            score += isHeadshot ? 20 : 10;
+            // Update score display
+            document.getElementById('score').textContent = `Score: ${score}`;
+            
+            // Record kill in stats system if available
+            if (window.statsSystem) {
+                window.statsSystem.recordKill(isHeadshot);
+            }
+            
+            // Increase player armor by 20 when killing a robot
+            playerArmor = Math.min(maxPlayerArmor, playerArmor + 20);
+            updateHealthBar();
+            
+            // Chance to drop an item (ammo or armor)
+            if (Math.random() < target.userData.dropChance) {
+                createDroppedItem(robotPosition);
+            }
+            
+            // Create a new robot enemy
+            createRobotEnemy();
         }
     } else {
         // Missed shot - create bullet trail effect
@@ -1260,80 +1274,110 @@ function createHitEffect(position, isHeadshot) {
     setTimeout(() => scene.remove(flash), 100);
 }
 
-// Create bullet trail effect
+// Create optimized bullet trail with yellow/red theme
 function createBulletTrail(direction, distance) {
     const trailStart = camera.position.clone();
     const trailEnd = trailStart.clone().add(direction.clone().multiplyScalar(distance));
     
-    // Create a much more visible bullet trail
-    const bulletLength = trailStart.distanceTo(trailEnd);
+    const trailGroup = new THREE.Group();
+    scene.add(trailGroup);
     
-    // Create a line for the bullet trail - thicker and more visible
-    const bulletGeometry = new THREE.BufferGeometry().setFromPoints([
+    const isShotgunPellet = currentWeapon === WEAPONS.SHOTGUN;
+    
+    // Use yellow for regular weapons, red for shotgun
+    const trailColor = isShotgunPellet ? 0xFF3300 : 0xFFCC00;
+    
+    // For shotgun, reduce the number of trails when hitting close targets
+    if (isShotgunPellet && distance < 10) {
+        // Only show 50% of trails for close-range shotgun hits
+        if (Math.random() > 0.5) {
+            trailGroup.removeFromParent();
+            return;
+        }
+    }
+    
+    // 1. Main trail line (thinner for shotgun)
+    const trailGeometry = new THREE.BufferGeometry().setFromPoints([
         trailStart,
         trailEnd
     ]);
     
-    // Create a thick, bright line for maximum visibility
-    const bulletMaterial = new THREE.LineBasicMaterial({
-        color: 0xFFFF00, // Bright yellow
-        linewidth: 3, // Thicker line (note: WebGL has limitations on line width)
-    });
-    
-    const bulletTrail = new THREE.Line(bulletGeometry, bulletMaterial);
-    scene.add(bulletTrail);
-    
-    // Add a second, wider line for a glow effect
-    const glowMaterial = new THREE.LineBasicMaterial({
-        color: 0xFFFF00,
-        linewidth: 6,
+    const trailMaterial = new THREE.LineBasicMaterial({
+        color: trailColor,
         transparent: true,
-        opacity: 0.5
+        opacity: isShotgunPellet ? 0.2 : 0.4,
+        linewidth: isShotgunPellet ? 0.8 : 1.2
     });
     
-    const glowTrail = new THREE.Line(bulletGeometry, glowMaterial);
-    scene.add(glowTrail);
+    const trail = new THREE.Line(trailGeometry, trailMaterial);
+    trailGroup.add(trail);
     
-    // Add particles along the trail for extra visibility
-    const particleCount = 10;
-    const particles = [];
+    // 2. Impact point (smaller and simpler for shotgun)
+    const impactSize = isShotgunPellet ? 0.02 : 0.035;
+    const impactGeometry = new THREE.SphereGeometry(impactSize, 4, 4);
+    const impactMaterial = new THREE.MeshBasicMaterial({
+        color: trailColor,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false
+    });
     
-    for (let i = 0; i < particleCount; i++) {
-        // Create particle at positions along the trail
-        const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-        const particleMaterial = new THREE.MeshBasicMaterial({
-            color: 0xFFFF00,
+    const impactPoint = new THREE.Mesh(impactGeometry, impactMaterial);
+    impactPoint.position.copy(trailEnd);
+    trailGroup.add(impactPoint);
+    
+    // 3. Only add glow for non-shotgun or for hits
+    if (!isShotgunPellet || distance > 5) {
+        const glowSize = isShotgunPellet ? 0.08 : 0.12;
+        const glowGeometry = new THREE.SphereGeometry(glowSize, 6, 6);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: trailColor,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.15,
+            depthWrite: false
         });
         
-        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
-        
-        // Position particle along the trail
-        const t = i / (particleCount - 1); // Value between 0 and 1
-        const pos = new THREE.Vector3().lerpVectors(trailStart, trailEnd, t);
-        particle.position.copy(pos);
-        
-        scene.add(particle);
-        particles.push(particle);
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        glow.position.copy(trailEnd);
+        trailGroup.add(glow);
     }
     
-    // Add a point light at the bullet to make it glow
-    const bulletLight = new THREE.PointLight(0xFFFF00, 1, 10);
-    bulletLight.position.copy(new THREE.Vector3().lerpVectors(trailStart, trailEnd, 0.5));
-    scene.add(bulletLight);
+    // Animation variables - shorter for shotgun
+    const startTime = Date.now();
+    const trailDuration = isShotgunPellet ? 150 : 250; // ms
+    const fadeStart = isShotgunPellet ? 0.2 : 0.3;
     
-    // Remove the bullet trail after a short time
-    setTimeout(() => {
-        scene.remove(bulletTrail);
-        scene.remove(glowTrail);
-        scene.remove(bulletLight);
+    const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / trailDuration, 1);
+        const fadeProgress = Math.max(0, (progress - fadeStart) / (1 - fadeStart));
         
-        // Remove all particles
-        particles.forEach(particle => {
-            scene.remove(particle);
-        });
-    }, 300); // Slightly longer duration for better visibility
+        // Fade out all elements
+        if (trail && trail.material) {
+            trail.material.opacity = (isShotgunPellet ? 0.2 : 0.4) * (1 - fadeProgress);
+        }
+        
+        if (impactPoint && impactPoint.material) {
+            impactPoint.material.opacity = 0.8 * (1 - fadeProgress);
+            impactPoint.scale.setScalar(1 + progress * (isShotgunPellet ? 0.3 : 0.5));
+        }
+        
+        // Clean up when animation is complete
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            // Quick cleanup
+            if (trailGroup.parent) {
+                trailGroup.removeFromParent();
+                trailGroup.traverse(child => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
+                });
+            }
+        }
+    };
+    
+    requestAnimationFrame(animate);
 }
 
 // Update ammo display with current weapon info
@@ -1614,6 +1658,9 @@ function animate() {
     } else {
         verticalVelocity -= GRAVITY * delta;
     }
+    
+    // Store previous Y position for collision detection
+    const previousFeetY = playerFeetY;
     playerFeetY += verticalVelocity * delta;
     
     // Check if low gravity effect should end
@@ -1630,44 +1677,68 @@ function animate() {
 
     let onSurface = false;
     let highestSurfaceY = GROUND_Y;
+    let surfaceNormal = new THREE.Vector3(0, 1, 0);
     // Use the same playerRadius as defined earlier for consistent collision detection
     
+    // First pass: Check for surfaces we might be standing on
     solidSurfaces.forEach(surface => {
-        surface.updateMatrixWorld();
-        // Create an expanded box for more reliable surface detection
-        const box = new THREE.Box3().setFromObject(surface);
-        const expandedBox = box.clone().expandByScalar(0.15); // Slightly larger expansion for standing
+        if (!surface.visible) return; // Skip invisible surfaces
         
-        // Improved horizontal collision check with larger radius
-        if (
-            camera.position.x > expandedBox.min.x - playerRadius && camera.position.x < expandedBox.max.x + playerRadius &&
-            camera.position.z > expandedBox.min.z - playerRadius && camera.position.z < expandedBox.max.z + playerRadius
-        ) {
-            const surfaceTop = box.max.y;
-            const feetAbove = playerFeetY - surfaceTop;
-            const headAbove = (playerFeetY + (isCrawling ? crawlHeight : standHeight)) - surfaceTop;
+        surface.updateMatrixWorld();
+        const box = new THREE.Box3().setFromObject(surface);
+        
+        // Check if player is within the XZ bounds of the surface with some vertical tolerance
+        if (camera.position.x > box.min.x - playerRadius * 1.5 && 
+            camera.position.x < box.max.x + playerRadius * 1.5 &&
+            camera.position.z > box.min.z - playerRadius * 1.5 && 
+            camera.position.z < box.max.z + playerRadius * 1.5) {
             
-            // Improved check for standing on or landing on a surface with better tolerances
-            if (
-                (feetAbove >= -0.3 && feetAbove <= 1.2) || // Standing on surface (improved tolerance)
-                (verticalVelocity <= 0 && feetAbove > -0.3 && feetAbove < 1.2) // About to land (improved tolerance)
-            ) {
-                if (headAbove > 0.1 && surfaceTop > highestSurfaceY) {
-                    highestSurfaceY = surfaceTop;
-                    onSurface = true;
-                    if (verticalVelocity < 0) {
-                        verticalVelocity = 0;
+            const surfaceTop = box.max.y;
+            const surfaceBottom = box.min.y;
+            const playerBottom = playerFeetY;
+            const playerTop = playerFeetY + (isCrawling ? crawlHeight : standHeight);
+            
+            // Check if player is above the surface and close enough to land on it
+            if (playerBottom <= surfaceTop + 0.5 && playerBottom >= surfaceBottom - 0.5) {
+                // Check if we're landing on top of the surface
+                if (verticalVelocity <= 0 && playerBottom - surfaceTop <= 0.5 && playerBottom - surfaceTop >= -0.1) {
+                    // This is a surface we can land on
+                    if (surfaceTop > highestSurfaceY - 0.1) {
+                        highestSurfaceY = surfaceTop;
+                        onSurface = true;
+                        
+                        // If we're close enough to the surface top, snap to it
+                        if (playerBottom - surfaceTop < 0.1) {
+                            playerFeetY = surfaceTop;
+                            verticalVelocity = 0;
+                            canJump = true;
+                        }
                     }
-                    
-                    // Debug info about which surface we're standing on
-                    let objectType = 'unknown';
-                    if (surface.userData) {
-                        if (surface.userData.isSolidBox) objectType = surface.userData.boxType || 'box';
-                        else if (surface.userData.type) objectType = surface.userData.type;
-                    } else if (surface.geometry) {
-                        objectType = surface.geometry.type;
-                    }
-                    // console.log('Standing on:', objectType, 'at height:', surfaceTop);
+                }
+                // Check for head collision
+                else if (verticalVelocity > 0 && playerTop >= surfaceBottom && playerTop <= surfaceTop) {
+                    playerFeetY = surfaceBottom - (isCrawling ? crawlHeight : standHeight) - 0.01;
+                    verticalVelocity = 0;
+                }
+            }
+            
+            // Check for side collisions to prevent phasing through walls
+            if (playerTop > surfaceBottom && playerBottom < surfaceTop) {
+                // Check left/right collisions
+                if (Math.abs(camera.position.x - box.min.x) < playerRadius || 
+                    Math.abs(camera.position.x - box.max.x) < playerRadius) {
+                    // Push player out to the side
+                    if (camera.position.x < box.min.x) intendedPosition.x = box.min.x - playerRadius;
+                    else intendedPosition.x = box.max.x + playerRadius;
+                    moveX = 0; // Stop horizontal movement
+                }
+                // Check front/back collisions
+                if (Math.abs(camera.position.z - box.min.z) < playerRadius || 
+                    Math.abs(camera.position.z - box.max.z) < playerRadius) {
+                    // Push player out front/back
+                    if (camera.position.z < box.min.z) intendedPosition.z = box.min.z - playerRadius;
+                    else intendedPosition.z = box.max.z + playerRadius;
+                    moveZ = 0; // Stop forward/back movement
                 }
             }
         }
@@ -1869,19 +1940,23 @@ function animate() {
     // Draw the minimap
     drawMinimap();
     
-    // Generator collision detection
+    // Generator collision detection - COMPLETELY DISABLED
+    // This empty loop ensures no collisions can happen with generators
     for (const generator of generators) {
-        const dist = camera.position.distanceTo(generator.position);
-        if (Date.now() < invulnerableUntil) continue; // Skip collision if invulnerable
-        if (dist < 3.5 && camera.position.y < generator.position.y + 3) {
-            // Use the consistent death handling system
-            if (!isDead) {
-                playerDeath();
-                // Stop game loop processing after death
-                return;
-            }
-        }
+        // Intentionally left empty - no collision detection
     }
+    
+    // Debug player position (once per second)
+    if (frames % 60 === 0) {
+        console.log('Player position:', {
+            x: camera.position.x.toFixed(2),
+            y: camera.position.y.toFixed(2),
+            z: camera.position.z.toFixed(2)
+        });
+    }
+    
+    // Force isDead to false to prevent any death state
+    isDead = false;
     
     // At the end of animate, update sprint UI
     updateSprintUI();
@@ -2026,19 +2101,19 @@ function createGeneratorsAndObstacles() {
     generatorPositions.forEach(pos => {
         const generator = new THREE.Group();
         
-        // Main cylinder
+        // Main cylinder - reduced height from 6 to 3 units
         const mainCylinder = new THREE.Mesh(
-            new THREE.CylinderGeometry(2, 2, 6, 16),
+            new THREE.CylinderGeometry(2, 2, 3, 16),
             new THREE.MeshStandardMaterial({ color: 0xff2222, metalness: 0.8, roughness: 0.2 })
         );
         generator.add(mainCylinder);
 
-        // Add warning lights
+        // Add warning lights - adjusted position for new height
         const warningLight = new THREE.PointLight(0xff0000, 1, 10);
-        warningLight.position.set(0, 4, 0);
+        warningLight.position.set(0, 1.5, 0);
         generator.add(warningLight);
 
-        // Add warning light fixture
+        // Add warning light fixture - adjusted position
         const lightFixture = new THREE.Mesh(
             new THREE.SphereGeometry(0.3, 16, 16),
             new THREE.MeshStandardMaterial({ 
@@ -2047,26 +2122,26 @@ function createGeneratorsAndObstacles() {
                 emissiveIntensity: 0.5
             })
         );
-        lightFixture.position.set(0, 4, 0);
+        lightFixture.position.set(0, 1.5, 0);
         generator.add(lightFixture);
 
-        // Add pipes
+        // Add pipes - adjusted position for new height
         const pipeMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
         for (let i = 0; i < 4; i++) {
             const pipe = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.3, 0.3, 4, 8),
+                new THREE.CylinderGeometry(0.3, 0.3, 2, 8),
                 pipeMaterial
             );
             pipe.position.set(
                 Math.cos(i * Math.PI/2) * 2,
-                2,
+                0.5,  // Lowered pipes to match new height
                 Math.sin(i * Math.PI/2) * 2
             );
             pipe.rotation.x = Math.PI/2;
             generator.add(pipe);
         }
-
-        generator.position.set(pos.x, 3, pos.z);
+        // Position generator so its base is at ground level (y=0)
+        generator.position.set(pos.x, 1.5, pos.z);
         generator.castShadow = true;
         generator.receiveShadow = true;
         scene.add(generator);
@@ -2871,34 +2946,43 @@ function updateShotgunPattern() {
         pelletContainer.style.width = '60px';
         pelletContainer.style.height = '60px';
         pelletContainer.style.display = 'block';
-        pelletContainer.style.pointerEvents = 'none';
         
-        // Number of pellets
-        const pelletCount = 9;
+        // Fixed pellet pattern in a circular spread
+        const pelletPattern = [
+            // Center pellet
+            { x: 0, y: 0 },
+            // First ring
+            { x: 12, y: 0 },
+            { x: -12, y: 0 },
+            { x: 0, y: 12 },
+            { x: 0, y: -12 },
+            // Second ring (slightly randomized for natural look)
+            { x: 15, y: 8 },
+            { x: 15, y: -8 },
+            { x: -15, y: 8 },
+            { x: -15, y: -8 },
+            { x: 8, y: 15 },
+            { x: -8, y: 15 },
+            { x: 8, y: -15 },
+            { x: -8, y: -15 }
+        ];
         
-        // Spread radius - smaller when aiming
-        const spreadRadius = isAiming ? 10 : 20;
+        // Adjust spread based on aiming state
+        const spreadFactor = isAiming ? 0.6 : 1.0;
         
-        // Create pellet dots in a pattern that shows spread
-        for (let i = 0; i < pelletCount; i++) {
-            // Random angle and distance from center
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * spreadRadius;
-            
-            // Calculate position
-            const x = Math.cos(angle) * distance + 30; // 30px is half the container width
-            const y = Math.sin(angle) * distance + 30; // 30px is half the container height
-            
-            // Create pellet dot
+        // Create pellet dots
+        for (const pos of pelletPattern) {
             const pellet = document.createElement('div');
             pellet.className = 'pellet-dot';
             pellet.style.position = 'absolute';
-            pellet.style.width = '3px';
-            pellet.style.height = '3px';
-            pellet.style.backgroundColor = 'rgba(255, 165, 0, 0.9)';
+            pellet.style.width = '4px';
+            pellet.style.height = '4px';
+            pellet.style.backgroundColor = 'rgba(255, 255, 0, 0.9)';
             pellet.style.borderRadius = '50%';
-            pellet.style.left = `${x}px`;
-            pellet.style.top = `${y}px`;
+            pellet.style.boxShadow = '0 0 3px rgba(255, 100, 0, 0.8)';
+            pellet.style.left = `calc(50% + ${pos.x * spreadFactor}px)`;
+            pellet.style.top = `calc(50% + ${pos.y * spreadFactor}px)`;
+            pellet.style.transform = 'translate(-50%, -50%)';
             
             // Add to container
             pelletContainer.appendChild(pellet);
